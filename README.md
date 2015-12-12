@@ -13,7 +13,7 @@ You need Android NDK and OpenCV to compile this project.
 ## Description
 This program shows PointCloud files created by TangoViewer for Tango Tablet.
 
-Select Folder that contains *.bin files from tablet.
+Run TangoViewer and connect to the server.
 
 ## Dependency
  - OpenGL (Included in Windows SDK)
