@@ -111,7 +111,6 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT iMessage, WPARAM wParam, LPARAM lParam)
 
 					wcscat_s(pszTemp, MAX_PATH, L"PointCloudMap.pcdx");
 
-					pcData->DownSampling();
 					pcData->ToFile(pszTemp);
 
 					lWindow->PrintLog(L"Save selected data to map Finished\r\n\r\n");
@@ -186,8 +185,15 @@ DWORD WINAPI ParseData(LPVOID arg)
 	wsprintf(szTemp, L"Network_%ld", tTime);
 
 	stopwatch.tic();
+
+#ifdef PRINT_DEBUG_MSG
+	pcTemp.ApplyStaticalOutlierRemoveFilter(lWindow);
+	pcTemp.DownSampling(lWindow);
+#else
 	pcTemp.ApplyStaticalOutlierRemoveFilter();
 	pcTemp.DownSampling();
+#endif
+
 	pcTemp.CalculateBoundingBox();
 	stopwatch.tok();
 
@@ -199,12 +205,25 @@ DWORD WINAPI ParseData(LPVOID arg)
 
 	stopwatch.tic();
 
+#ifdef PRINT_DEBUG_MSG
+	pcData->MergePointCloud(pcTemp, lWindow);
+#else
 	pcData->MergePointCloud(pcTemp);
+#endif
 
 	stopwatch.tok();
-
+	
 	lWindow->PrintLog(L" [%d] Correction End (%.3lfms)\r\n", stReadCount, stopwatch.get());
 	lWindow->PrintLog(L"Error correction for [%d] End\r\n\r\n", stReadCount++);
+
+	if (stopwatch.get() > MAX_CORRECTION_TIME)
+	{
+#ifdef PRINT_DEBUG_MSG
+		pcData->DownSampling(lWindow);
+#else
+		pcData->DownSampling();
+#endif
+	}
 
 	m.unlock();
 

@@ -6,7 +6,6 @@
 #include <Windows.h>
 
 #include "PointCloud.h"
-#include "Constant.h"
 
 #define FLAG_MAP_FILE	0x00000001
 #define FLAG_NO_MUL		0x00000002

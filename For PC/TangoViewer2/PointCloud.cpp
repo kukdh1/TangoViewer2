@@ -87,6 +87,70 @@ namespace kukdh1
 		pclPlane->values[3] = -glm::dot(v3O, v3N);
 	}
 
+	BOOL Intersect_1D(float fAMin, float fAMax, float fBMin, float fBMax, float &fOutMin, float &fOutMax)
+	{
+		BOOL bReturn = FALSE;
+		
+		// Case 1
+		//  Am Bm AM BM
+		if (fAMin <= fBMin && fBMin <= fAMax && fAMax <= fBMax)
+			bReturn = TRUE, fOutMin = fBMin, fOutMax = fAMax;
+
+		// Case 2
+		//  Bm Am BM AM
+		else if (fBMin <= fAMin && fAMin <= fBMax && fBMax <= fAMax)
+			bReturn = TRUE, fOutMin = fAMin, fOutMax = fBMax;
+
+		// Case 3
+		//  Bm Am AM BM
+		else if (fBMin <= fAMin && fAMax <= fBMax)
+			bReturn = TRUE, fOutMin = fAMin, fOutMax = fAMax;
+
+		// Case 4
+		//  Am Bm BM AM
+		else if (fAMin <= fBMin && fBMax <= fAMax)
+			bReturn = TRUE, fOutMin = fBMin, fOutMax = fBMax;
+
+		return bReturn;
+	}
+
+	template<typename PointT>
+	BOOL Intersect(BoundingBox<PointT> &BoxA, BoundingBox<PointT> &BoxB, Eigen::Vector3f &OutputMin, Eigen::Vector3f &OutputMax)
+	{
+		Eigen::Vector3f BoxAMin;
+		Eigen::Vector3f BoxBMin;
+		Eigen::Vector3f BoxAMax;
+		Eigen::Vector3f BoxBMax;
+
+		//Set Values
+		BoxAMin(0) = BoxA.Point[0].x;
+		BoxAMin(1) = BoxA.Point[0].y;
+		BoxAMin(2) = BoxA.Point[0].z;
+		BoxAMax(0) = BoxA.Point[6].x;
+		BoxAMax(1) = BoxA.Point[6].y;
+		BoxAMax(2) = BoxA.Point[6].z;
+		BoxBMin(0) = BoxB.Point[0].x;
+		BoxBMin(1) = BoxB.Point[0].y;
+		BoxBMin(2) = BoxB.Point[0].z;
+		BoxBMax(0) = BoxB.Point[6].x;
+		BoxBMax(1) = BoxB.Point[6].y;
+		BoxBMax(2) = BoxB.Point[6].z;
+
+		//X axis
+		if (!Intersect_1D(BoxAMin(0), BoxAMax(0), BoxBMin(0), BoxBMax(0), OutputMin(0), OutputMax(0)))
+			return FALSE;
+
+		//Y axis
+		if (!Intersect_1D(BoxAMin(1), BoxAMax(1), BoxBMin(1), BoxBMax(1), OutputMin(1), OutputMax(1)))
+			return FALSE;
+
+		//Z axis
+		if (!Intersect_1D(BoxAMin(2), BoxAMax(2), BoxBMin(2), BoxBMax(2), OutputMin(2), OutputMax(2)))
+			return FALSE;
+
+		return TRUE;
+	}
+
 	void DrawCube(BoundingBox<pcl::PointXYZRGB> &pclRegion, COLORREF color)
 	{
 		int index[24] = { 0, 1, 0, 3, 0, 4, 1, 2, 1, 5, 2, 6, 2, 3, 3, 7, 4, 5, 5, 6, 6, 7, 7, 4 };
@@ -112,9 +176,6 @@ namespace kukdh1
 	PointCloud::PointCloud()
 	{
 		pclPointCloudUnordered = pcl::PointCloud<pcl::PointXYZRGB>::Ptr(new pcl::PointCloud<pcl::PointXYZRGB>);
-
-		bFiltered = FALSE;
-		bOBBCalculated = FALSE;
 	}
 
 	PointCloud::~PointCloud()
@@ -122,16 +183,26 @@ namespace kukdh1
 		pclPointCloudUnordered->clear();
 	}
 
+#ifdef PRINT_DEBUG_MSG
+	void PointCloud::DownSampling(LogWindow *lWindow)
+#else
 	void PointCloud::DownSampling()
+#endif
 	{
 		pcl::VoxelGrid<pcl::PointXYZRGB> pclVG;
 		pcl::PointCloud<pcl::PointXYZRGB>::Ptr pclOutput(new pcl::PointCloud<pcl::PointXYZRGB>);
 
 		pclVG.setInputCloud(pclPointCloudUnordered);
-		pclVG.setLeafSize(0.01f, 0.01f, 0.01f);
+		pclVG.setLeafSize(VGF_LEAF, VGF_LEAF, VGF_LEAF);
 		pclVG.filter(*pclOutput);
 
-		pclPointCloudUnordered = pclOutput;
+#ifdef PRINT_DEBUG_MSG
+		lWindow->PrintLog(L"[VoxelGrid-Debug] %d -> %d\r\n", pclPointCloudUnordered->size(), pclOutput->size());
+#endif
+
+		*pclPointCloudUnordered = *pclOutput;
+
+		pclOutput->clear();
 	}
 
 	void PointCloud::DrawOnGLWindow(BOOL bDrawBoundingBox)
@@ -174,61 +245,58 @@ namespace kukdh1
 
 	void PointCloud::CalculateBoundingBox()
 	{
-		if (!bOBBCalculated)
-		{
-			//Calculate Object Bounding Box for entire point cloud
-			Eigen::Matrix3f eigenRotationalMatrix;
-			pcl::PointXYZRGB pclPositionVector;
-			pcl::MomentOfInertiaEstimation<pcl::PointXYZRGB> pclMIE;
+		//Calculate Object Bounding Box for entire point cloud
+		Eigen::Matrix3f eigenRotationalMatrix;
+		pcl::PointXYZRGB pclPositionVector;
+		pcl::MomentOfInertiaEstimation<pcl::PointXYZRGB> pclMIE;
 
-			pclMIE.setInputCloud(pclPointCloudUnordered);
-			pclMIE.compute();
-			pclMIE.getAABB(pclBoundingBox.Point[0], pclBoundingBox.Point[6]);
+		pclMIE.setInputCloud(pclPointCloudUnordered);
+		pclMIE.compute();
+		pclMIE.getAABB(pclBoundingBox.Point[0], pclBoundingBox.Point[6]);
 
-			pclBoundingBox.Point[1] = pclBoundingBox.Point[0];
-			pclBoundingBox.Point[1].y = pclBoundingBox.Point[6].y;
-			pclBoundingBox.Point[2] = pclBoundingBox.Point[0];
-			pclBoundingBox.Point[2].x = pclBoundingBox.Point[6].x;
-			pclBoundingBox.Point[2].y = pclBoundingBox.Point[6].y;
-			pclBoundingBox.Point[3] = pclBoundingBox.Point[0];
-			pclBoundingBox.Point[3].x = pclBoundingBox.Point[6].x;
+		pclBoundingBox.Point[1] = pclBoundingBox.Point[0];
+		pclBoundingBox.Point[1].y = pclBoundingBox.Point[6].y;
+		pclBoundingBox.Point[2] = pclBoundingBox.Point[0];
+		pclBoundingBox.Point[2].x = pclBoundingBox.Point[6].x;
+		pclBoundingBox.Point[2].y = pclBoundingBox.Point[6].y;
+		pclBoundingBox.Point[3] = pclBoundingBox.Point[0];
+		pclBoundingBox.Point[3].x = pclBoundingBox.Point[6].x;
 
-			pclBoundingBox.Point[4] = pclBoundingBox.Point[6];
-			pclBoundingBox.Point[4].x = pclBoundingBox.Point[0].x;
-			pclBoundingBox.Point[4].y = pclBoundingBox.Point[0].y;
-			pclBoundingBox.Point[5] = pclBoundingBox.Point[6];
-			pclBoundingBox.Point[5].x = pclBoundingBox.Point[0].x;
-			pclBoundingBox.Point[7] = pclBoundingBox.Point[6];
-			pclBoundingBox.Point[7].y = pclBoundingBox.Point[0].y;
-
-			bOBBCalculated = TRUE;
-		}
+		pclBoundingBox.Point[4] = pclBoundingBox.Point[6];
+		pclBoundingBox.Point[4].x = pclBoundingBox.Point[0].x;
+		pclBoundingBox.Point[4].y = pclBoundingBox.Point[0].y;
+		pclBoundingBox.Point[5] = pclBoundingBox.Point[6];
+		pclBoundingBox.Point[5].x = pclBoundingBox.Point[0].x;
+		pclBoundingBox.Point[7] = pclBoundingBox.Point[6];
+		pclBoundingBox.Point[7].y = pclBoundingBox.Point[0].y;
 	}
 
+#ifdef PRINT_DEBUG_MSG
+	void PointCloud::ApplyStaticalOutlierRemoveFilter(LogWindow *lWindow)
+#else
 	void PointCloud::ApplyStaticalOutlierRemoveFilter()
+#endif
 	{
-		if (!bFiltered)
-		{
-			pcl::PointCloud<pcl::PointXYZRGB>::Ptr pclOutput(new pcl::PointCloud<pcl::PointXYZRGB>);
-			pcl::StatisticalOutlierRemoval<pcl::PointXYZRGB> pclSOR;
+		pcl::PointCloud<pcl::PointXYZRGB>::Ptr pclOutput(new pcl::PointCloud<pcl::PointXYZRGB>);
+		pcl::StatisticalOutlierRemoval<pcl::PointXYZRGB> pclSOR;
 
-			pclSOR.setInputCloud(pclPointCloudUnordered);
-			pclSOR.setMeanK(SOR_MEAN_K);
-			pclSOR.setStddevMulThresh(SOR_STDDEV_MUL_THRES);
-			pclSOR.filter(*pclOutput);
+		pclSOR.setInputCloud(pclPointCloudUnordered);
+		pclSOR.setMeanK(SOR_MEAN_K);
+		pclSOR.setStddevMulThresh(SOR_STDDEV_MUL_THRES);
+		pclSOR.filter(*pclOutput);
 
-			pclPointCloudUnordered = pclOutput;
+#ifdef PRINT_DEBUG_MSG
+		lWindow->PrintLog(L"[SOR-Debug] %d -> %d\r\n", pclPointCloudUnordered->size(), pclOutput->size());
+#endif
 
-			bFiltered = TRUE;
-		}
-	}
+		*pclPointCloudUnordered = *pclOutput;
+
+		pclOutput->clear();
+	} 
 
 	BOOL PointCloud::FromFile(WCHAR * pszFilePath)
 	{
 		FileIO fiFile;
-
-		bFiltered = FALSE;
-		bOBBCalculated = FALSE;
 
 		return fiFile.ReadFromFile(pszFilePath, pclPointCloudUnordered);
 	}
@@ -275,12 +343,74 @@ namespace kukdh1
 		return TRUE;
 	}
 
+#ifdef PRINT_DEBUG_MSG
+	void PointCloud::MergePointCloud(PointCloud &cloud, LogWindow *lWindow)
+#else
 	void PointCloud::MergePointCloud(PointCloud &cloud)
+#endif
 	{
-		*pclPointCloudUnordered += *cloud.pclPointCloudUnordered;
+		//Get intersection box
+		Eigen::Vector3f pclBoxMin;
+		Eigen::Vector3f pclBoxMax;
 
-		ApplyStaticalOutlierRemoveFilter();
-		DownSampling();
+		if (Intersect(pclBoundingBox, cloud.pclBoundingBox, pclBoxMin, pclBoxMax))
+		{
+			pcl::CropBox<pcl::PointXYZRGB> pclCB;
+			pcl::PointCloud<pcl::PointXYZRGB>::Ptr pclCloudData(new pcl::PointCloud<pcl::PointXYZRGB>);
+			pcl::PointCloud<pcl::PointXYZRGB>::Ptr pclCloudInput(new pcl::PointCloud<pcl::PointXYZRGB>);
+
+			//Crop Clouds
+			pclCB.setMin(pclBoxMin.head<4>());
+			pclCB.setMax(pclBoxMax.head<4>());
+			pclCB.setInputCloud(pclPointCloudUnordered);
+			pclCB.filter(*pclCloudData);
+
+			pclCB.setInputCloud(cloud.pclPointCloudUnordered);
+			pclCB.filter(*pclCloudInput);
+
+			//Execute Iterative Closest Point
+			pcl::IterativeClosestPointNonLinear<pcl::PointXYZRGB, pcl::PointXYZRGB> pclICP;
+			Eigen::Matrix4f transform;
+			pcl::PointCloud<pcl::PointXYZRGB> pclOutput;
+
+			pclICP.setInputSource(pclCloudInput);
+			pclICP.setInputTarget(pclCloudData);
+
+			pclICP.setMaxCorrespondenceDistance(ICP_MAX_DISTANCE);
+			pclICP.setMaximumIterations(ICP_MAX_ITERATION);
+			pclICP.setTransformationEpsilon(ICP_TRANSFORM_EPSILON);
+			pclICP.setEuclideanFitnessEpsilon(ICP_EUCLIDEAN_EPSILON);
+
+			pclICP.align(pclOutput);
+			transform = pclICP.getFinalTransformation();
+
+			//Clean up
+			pclOutput.clear();
+			pclCloudData->clear();
+			pclCloudInput->clear();
+
+			//Transform cloud
+			pcl::PointCloud<pcl::PointXYZRGB>::Ptr pclTransformed(new pcl::PointCloud<pcl::PointXYZRGB>);
+
+			pcl::transformPointCloud(*cloud.pclPointCloudUnordered, *pclTransformed, transform);
+
+#ifdef PRINT_DEBUG_MSG
+			lWindow->PrintLog(L"[Merge-Debug]\r\n Data Count : %d\r\n Input Count : %d\r\n", pclPointCloudUnordered->size(), pclTransformed->size());
+#endif
+
+			//Add points
+			*pclPointCloudUnordered += *pclTransformed;
+
+			//Clean up
+			pclTransformed->clear();
+		}
+		else
+		{
+			//Simply add the points
+			*pclPointCloudUnordered += *cloud.pclPointCloudUnordered;
+		}
+
+		//Update Data
 		CalculateBoundingBox();
 	}
 }

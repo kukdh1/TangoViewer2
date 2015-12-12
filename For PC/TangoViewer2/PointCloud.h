@@ -9,13 +9,15 @@
 
 #include <pcl/point_cloud.h>
 #include <pcl/point_types.h>
+#include <pcl/common/transforms.h>
+#include <pcl/filters/statistical_outlier_removal.h>
+#include <pcl/filters/voxel_grid.h>
+#include <pcl/filters/crop_box.h>
 #include <pcl/sample_consensus/method_types.h>
 #include <pcl/sample_consensus/model_types.h>
 #include <pcl/segmentation/sac_segmentation.h>
-#include <pcl/filters/extract_indices.h>
-#include <pcl/filters/statistical_outlier_removal.h>
 #include <pcl/features/moment_of_inertia_estimation.h>
-#include <pcl/filters/voxel_grid.h>
+#include <pcl/registration/icp_nl.h>
 
 #include "glm/mat4x4.hpp"
 #include "glm/vec4.hpp"
@@ -25,6 +27,10 @@
 
 #include "Constant.h"
 #include "File.h"
+
+#ifdef PRINT_DEBUG_MSG
+#include "Log.h"
+#endif
 
 //wingdi.h:1846
 #define RGB(r,g,b)          ((COLORREF)(((BYTE)(r)|((WORD)((BYTE)(g))<<8))|(((DWORD)(BYTE)(b))<<16)))
@@ -131,18 +137,22 @@ namespace kukdh1
 			pcl::PointCloud<pcl::PointXYZRGB>::Ptr pclPointCloudUnordered;
 			BoundingBox<pcl::PointXYZRGB> pclBoundingBox;
 
-			BOOL bFiltered;
-			BOOL bOBBCalculated;
-
 		public:
 			PointCloud();
 			virtual ~PointCloud();
 
 			void DrawOnGLWindow(BOOL bDrawBoundingBox);
 
+#ifdef PRINT_DEBUG_MSG
+			void PointCloud::DownSampling(LogWindow *lWindow);
+			void PointCloud::MergePointCloud(PointCloud &cloud, LogWindow *lWindow);
+			void ApplyStaticalOutlierRemoveFilter(LogWindow *lWindow);
+#else
 			void DownSampling();
-			
+			void MergePointCloud(PointCloud &cloud);
 			void ApplyStaticalOutlierRemoveFilter();
+#endif
+			
 			void CalculateBoundingBox();
 
 			static void * operator new(size_t);
@@ -151,8 +161,6 @@ namespace kukdh1
 			BOOL FromFile(WCHAR *pszFilePath);
 			BOOL ToFile(WCHAR *pszFilePath);
 			BOOL FromBytestream(unsigned char *ucMatrixStream, unsigned int uiPoints, unsigned char *ucPointStream);
-
-			void MergePointCloud(PointCloud &cloud);
 	};
 }
 

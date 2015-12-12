@@ -12,8 +12,6 @@
 #include "Log.h"
 #include "Constant.h"
 
-//#define PRINT_DEBUG_MSG
-
 namespace kukdh1
 {
 	typedef void (*NMDataCallback)(HWND hWnd, unsigned int uiByteLength, unsigned char *pucData);
